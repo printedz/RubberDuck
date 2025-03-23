@@ -6,5 +6,7 @@ edition = "2024"
 [dependencies]
 gtk = "0.18.2"
 glib = "0.18.5"
+rodio = "0.17.1"
+
 
 

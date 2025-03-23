@@ -3,7 +3,7 @@ use glib::clone;
 use gtk::{Application, ApplicationWindow, Box, Button, Entry, Orientation, ScrolledWindow, TextView, TextBuffer};
 
 use crate::networking::send_message_tcp;
-
+use crate::sound::play_notification_sound;
 // Función para enviar un mensaje a través de TCP/IP
 
 pub fn build_ui(app: &Application) {
@@ -61,7 +61,7 @@ pub fn build_ui(app: &Application) {
             match send_message_tcp(&text) {
                 Ok(_) => {
                     println!("Mensaje enviado correctamente");
-                    
+                    play_notification_sound().unwrap();
                     // Añadir el mensaje al historial
                     let mut end_iter = buffer.end_iter();
                     
