@@ -1,8 +1,6 @@
 use gtk::prelude::*;
 use glib::clone;
 use gtk::{Application, ApplicationWindow, Box, Button, Entry, Orientation, ScrolledWindow, TextView, TextBuffer};
-use std::io::{Write, Error};
-use std::net::TcpStream;
 
 use crate::networking::send_message_tcp;
 

@@ -2,12 +2,11 @@ mod ui;
 pub mod networking;
 
 use gtk::prelude::*;
-use gtk::{gio, Application};
+use gtk::{Application};
 use crate::networking::send_message_tcp;
 
 fn main() {
-    send_message_tcp("Started running.");
-    // Inicializar la aplicación GTK
+    let _ = send_message_tcp("Started running.");    // Inicializar la aplicación GTK
     let app = Application::builder()
         .application_id("com.example.textbox")
         .build();
