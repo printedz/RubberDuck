@@ -1,112 +1,202 @@
 use gtk::prelude::*;
-use glib::clone;
-use gtk::{Application, ApplicationWindow, Box, Button, Entry, Orientation, ScrolledWindow, TextView, TextBuffer};
-
+use gtk::{
+    Application, ApplicationWindow, Box as GtkBox, Button, Entry, Label, Orientation,
+    ScrolledWindow, TextView, ResponseType
+};
 use crate::networking::send_message_tcp;
 use crate::sound::play_notification_sound;
-// Función para enviar un mensaje a través de TCP/IP
 
 pub fn build_ui(app: &Application) {
-    // Crear una nueva ventana de aplicación
-    let window = ApplicationWindow::builder()
-        .application(app)
-        .title("Patito de Goma")
-        .default_width(400)
-        .default_height(300) // Aumentado para acomodar el historial
-        .build();
+    // Solicitar nombre de usuario al iniciar
+    let username = request_username(app);
 
-    // Crear un contenedor vertical para los widgets
-    let vbox = Box::new(Orientation::Vertical, 10);
-    vbox.set_margin_top(10);
-    vbox.set_margin_bottom(10);
-    vbox.set_margin_start(10);
-    vbox.set_margin_end(10);
+    // Crear ventana principal con el nombre de usuario
+    create_main_window(app, &username);
+}
 
-    // Crear un TextView para mostrar el historial de mensajes
-    let text_view = TextView::new();
-    text_view.set_editable(false); // Solo lectura
-    text_view.set_wrap_mode(gtk::WrapMode::Word);
+fn request_username(app: &Application) -> String {
+    // Crear un diálogo modal para pedir el nombre de usuario
+    let dialog = gtk::Dialog::new();
+    dialog.set_title("Iniciar sesión");
+    dialog.set_modal(true);
+    dialog.set_default_width(350);
+    dialog.set_default_height(150);
+    dialog.set_application(Some(app));
 
-    // Crear un buffer para el TextView
-    let buffer = TextBuffer::new(None::<&gtk::TextTagTable>);
-    text_view.set_buffer(Some(&buffer));
+    // Obtener el content area del diálogo
+    let content_area = dialog.content_area();
 
-    // Colocar el TextView dentro de un ScrolledWindow para permitir desplazamiento
-    let scrolled_window = ScrolledWindow::builder().build();
-    scrolled_window.set_policy(gtk::PolicyType::Automatic, gtk::PolicyType::Automatic);
+    // Crear una caja vertical para organizar los elementos
+    let vbox = GtkBox::new(Orientation::Vertical, 10);
+    vbox.set_margin_top(20);
+    vbox.set_margin_bottom(20);
+    vbox.set_margin_start(20);
+    vbox.set_margin_end(20);
+
+    // Crear el label con instrucciones
+    let label = Label::new(Some("Por favor, introduce tu nombre de usuario:"));
+    vbox.pack_start(&label, false, false, 0);
+
+    // Crear campo de texto para el nombre de usuario
+    let username_entry = Entry::new();
+    username_entry.set_activates_default(true);
+    vbox.pack_start(&username_entry, false, false, 0);
+
+    // Añadir la caja vertical al content area
+    content_area.add(&vbox);
+
+    // Añadir botones al diálogo
+    dialog.add_button("Cancelar", ResponseType::Cancel);
+    let ok_button = dialog.add_button("Aceptar", ResponseType::Accept);
+    ok_button.set_sensitive(false);
+    dialog.set_default_response(ResponseType::Accept);
+
+    // Habilitar el botón Aceptar solo cuando hay texto
+    let ok_button_clone = ok_button.clone();
+    username_entry.connect_changed(move |entry| {
+        let text = entry.text();
+        ok_button_clone.set_sensitive(!text.is_empty());
+    });
+
+    // Mostrar el diálogo
+    dialog.show_all();
+
+    // Variable para almacenar el nombre de usuario
+    let mut username = String::from("Usuario");
+
+    // Ejecutar el diálogo y procesar la respuesta
+    let response = dialog.run();
+
+    if response == ResponseType::Accept {
+        let text = username_entry.text().to_string();
+        if !text.is_empty() {
+            username = text;
+        }
+    }
+
+    // Cerrar y destruir el diálogo
+    dialog.hide();
+    
+    unsafe {
+        dialog.destroy();
+    }
+    username
+}
+
+fn create_main_window(app: &Application, username: &str) {
+    // Crear la ventana principal
+    let window = ApplicationWindow::new(app);
+    window.set_title(&format!("Chat - {}", username));
+    window.set_default_size(600, 400);
+
+    // Crear una caja vertical para organizar los elementos
+    let vbox = GtkBox::new(Orientation::Vertical, 5);
+
+    // Mostrar nombre de usuario en la ventana
+    let welcome_label = Label::new(Some(&format!("Bienvenido, {}!", username)));
+    welcome_label.set_margin_top(10);
+    welcome_label.set_margin_bottom(5);
+    welcome_label.set_halign(gtk::Align::Start);
+    welcome_label.set_margin_start(10);
+    vbox.pack_start(&welcome_label, false, false, 0);
+
+    // Crear un área de scroll para el TextView de mensajes
+    let scrolled_window = ScrolledWindow::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+    scrolled_window.set_hscrollbar_policy(gtk::PolicyType::Never);
+    scrolled_window.set_vscrollbar_policy(gtk::PolicyType::Automatic);
+    scrolled_window.set_hexpand(true);
     scrolled_window.set_vexpand(true);
+
+    // Crear TextView para mostrar mensajes
+    let text_view = TextView::new();
+    text_view.set_margin_top(10);
+    text_view.set_margin_bottom(10);
+    text_view.set_margin_start(10);
+    text_view.set_margin_end(10);
+    text_view.set_editable(false);
+    text_view.set_cursor_visible(false);
+    let buffer = text_view.buffer().expect("Error al obtener el buffer");
+
+    // Añadir TextView al ScrolledWindow
     scrolled_window.add(&text_view);
 
-    // Añadir el ScrolledWindow al contenedor vertical
-    vbox.pack_start(&scrolled_window, true, true, 0);
+    // Crear caja horizontal para entrada de texto y botón
+    let hbox = GtkBox::new(Orientation::Horizontal, 5);
+    hbox.set_margin_top(5);
+    hbox.set_margin_bottom(5);
+    hbox.set_margin_start(5);
+    hbox.set_margin_end(5);
 
-    // Crear un contenedor horizontal para el campo de texto y el botón
-    let hbox = Box::new(Orientation::Horizontal, 5);
-
-    // Crear un campo de entrada de texto
+    // Entrada de texto
     let text_entry = Entry::new();
-    text_entry.set_placeholder_text(Some("Ingrese su texto aquí"));
     text_entry.set_hexpand(true);
+    // Corregir: Envolver el texto en Some()
+    text_entry.set_placeholder_text(Some("Escribe un mensaje..."));
 
-    // Crear un botón de "Enviar"
+    // Botón de enviar
     let send_button = Button::with_label("Enviar");
+    send_button.set_sensitive(false);
 
-    // Conectar la señal "clicked" del botón
-    send_button.connect_clicked(clone!(@weak text_entry, @weak buffer => move |_| {
-        let text = text_entry.text().to_string();
-        if !text.is_empty() {
-            println!("Texto ingresado: {}", text);
-            
-            // Enviar el mensaje por TCP/IP
-            match send_message_tcp(&text) {
-                Ok(_) => {
-                    println!("Mensaje enviado correctamente");
-                    play_notification_sound().unwrap();
-                    // Añadir el mensaje al historial
-                    let mut end_iter = buffer.end_iter();
-                    
-                    // Añadir una nueva línea si el buffer no está vacío
-                    if buffer.char_count() > 0 {
-                        buffer.insert(&mut end_iter, "\n");
+    // Habilitar/deshabilitar botón según contenido de texto
+    let send_button_clone = send_button.clone();
+    text_entry.connect_changed(move |entry| {
+        let text = entry.text();
+        send_button_clone.set_sensitive(!text.is_empty());
+    });
+
+    // Función para enviar mensajes (usando clonación explícita)
+    let send_message = {
+        let buffer = buffer.clone();
+        let text_entry = text_entry.clone();
+        let username = username.to_string();
+
+        move || {
+            let text = text_entry.text().to_string();
+            if !text.is_empty() {
+                let formatted_message = format!("{}: {}\n", username, text);
+
+                buffer.insert_at_cursor(&formatted_message);
+
+                // Enviar mensaje por la red
+                match send_message_tcp(&format!("[{}] {}", username, text)) {
+                    Ok(_) => {
+                        // Reproducir sonido de notificación
+                        match play_notification_sound() {
+                            Ok(_) => {},
+                            Err(e) => println!("Error al reproducir notificación: {}", e),
+                        }
+                    },
+                    Err(e) => {
+                        let error_msg = format!("Error al enviar mensaje: {}\n", e);
+                        buffer.insert_at_cursor(&error_msg);
                     }
-                    
-                    // Añadir el mensaje con formato
-                    buffer.insert(&mut end_iter, &format!("Enviado: {}", text));
-                    
-                    // Desplazarse al final del texto para mostrar el mensaje más reciente
-                    let mut end_iter = buffer.end_iter();
-                    text_view.scroll_to_iter(&mut end_iter, 0.0, false, 0.0, 0.0);
-                },
-                Err(e) => {
-                    println!("Error al enviar el mensaje: {}", e);
-                    
-                    // Opcionalmente, también puedes mostrar los errores en el historial
-                    let mut end_iter = buffer.end_iter();
-                    if buffer.char_count() > 0 {
-                        buffer.insert(&mut end_iter, "\n");
-                    }
-                    buffer.insert(&mut end_iter, &format!("Error: No se pudo enviar '{}' - {}", text, e));
-                },
+                }
+
+                text_entry.set_text("");
             }
-            
-            text_entry.set_text("");  // Limpiar el campo después de enviar
         }
-    }));
+    };
 
-    // También permitir enviar al presionar Enter en el campo de texto
-    text_entry.connect_activate(clone!(@weak send_button => move |_| {
-        send_button.emit_clicked();
-    }));
+    // Enviar mensaje al presionar Enter
+    let send_message_clone = send_message.clone();
+    text_entry.connect_activate(move |_| {
+        send_message_clone();
+    });
 
-    // Añadir el campo de texto y el botón al contenedor horizontal
+    // Enviar mensaje al hacer clic en el botón
+    send_button.connect_clicked(move |_| {
+        send_message();
+    });
+
+    // Añadir elementos a sus contenedores
     hbox.pack_start(&text_entry, true, true, 0);
-    hbox.pack_start(&send_button, false, false, 0);
+    hbox.pack_end(&send_button, false, false, 0);
 
-    // Añadir el contenedor horizontal al contenedor vertical (al final)
-    vbox.pack_start(&hbox, false, false, 0);
+    vbox.pack_start(&scrolled_window, true, true, 0);
+    vbox.pack_end(&hbox, false, false, 0);
 
-    // Añadir el contenedor vertical a la ventana
-    window.set_child(Some(&vbox));
+    // Añadir la caja vertical a la ventana
+    window.add(&vbox);
 
     // Mostrar la ventana
     window.show_all();
